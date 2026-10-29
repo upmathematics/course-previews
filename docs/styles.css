@@ -380,3 +380,4 @@ pre.code { margin: 0; padding: 8px; overflow-x: auto; white-space: pre; font: 13
 .lineA, .lineB { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin: 0 2px 0 8px; }
 .lineA { background: var(--blue); }
 .lineB { background: var(--orange); }
+.fdot.miss.far { fill: #8f1d1d; }

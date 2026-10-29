@@ -392,11 +392,11 @@ document.querySelectorAll("img[data-inline]").forEach(async (img) => {
         story: "In this simulated state, 52% of voters support a ballot measure. A poll asks a random sample of voters. Demographers use the same idea for survey estimates, such as average household size.",
         takeaway: function (se, n) { return "With " + n.toLocaleString() + " voters, 95% of polls land within ±" + (200 * se).toFixed(1) + " points of the true 52%. That ± is the margin of error. A poll showing 51% doesn't mean the measure is losing ground, and one showing 53% doesn't mean it's pulling ahead."; } }
     };
-    var order = ["concept", "epi", "health", "quality", "poll"];
+    var order = ["epi", "health", "quality", "poll"];
 
     root.innerHTML = simNote("361") +
-      '<p class="explore-intro">Pick a setting, then draw samples. <em>The concept</em> shows the core idea: averages of samples pile up into a bell shape around the true value, and their spread shrinks as samples get bigger. ' +
-      'Each applied setting puts that idea to work the way people in the field do: confidence intervals in epidemiology, a funnel plot comparing hospitals, a control chart in a factory, and a poll tracker.</p>' +
+      '<p class="explore-intro">Pick a setting, then draw samples. In every setting, averages of samples pile up around the true value, their spread shrinks as samples get bigger, and a few land far out just by chance. ' +
+      'Each setting shows that the way people in the field do: confidence intervals in epidemiology, a funnel plot comparing hospitals, a control chart in a factory, and a poll tracker. Red marks the results that fall outside the expected range.</p>' +
       '<div class="btn-toolbar scen-bar" id="x361-scen" role="group" aria-label="Setting">' + order.map(function (k, i) {
         return '<button type="button" class="btn btn-default btn-sm' + (i ? "" : " active") + '" data-s="' + k + '" aria-pressed="' + (i ? "false" : "true") + '">' + scenarios[k].label + "</button>";
       }).join("") + "</div>" +
@@ -505,7 +505,7 @@ document.querySelectorAll("img[data-inline]").forEach(async (img) => {
         samples.forEach(function (s) { var z = Math.abs(s.mean - P.mu) / (P.sigma / Math.sqrt(s.n)); if (z > 2) out2++; if (z > 3) out3++; });
         shown.forEach(function (s) {
           var z = Math.abs(s.mean - P.mu) / (P.sigma / Math.sqrt(s.n));
-          svgEl("circle", { cx: sxn(s.n), cy: sy(s.mean), r: 2.4, "class": "fdot" + (z > 3 ? " miss" : "") }, svg);
+          svgEl("circle", { cx: sxn(s.n), cy: sy(s.mean), r: 2.6, "class": "fdot" + (z > 3 ? " miss far" : z > 2 ? " miss" : "") }, svg);
         });
         var l2 = svgEl("text", { x: X1 - 4, y: sy(P.mu - 2 * P.sigma / Math.sqrt(200)) + 14, "text-anchor": "end", "class": "svg-small svg-strong gaplabel" }, svg); l2.textContent = "95% limits (dashed)";
         var l3 = svgEl("text", { x: X1 - 4, y: sy(P.mu + 3 * P.sigma / Math.sqrt(200)) - 7, "text-anchor": "end", "class": "svg-small svg-strong gaplabel" }, svg); l3.textContent = "99.8% limits (solid)";
@@ -515,7 +515,7 @@ document.querySelectorAll("img[data-inline]").forEach(async (img) => {
         return {
           stats: statBox("Hospital-days so far", k) + statBox("Outside the 95% limits", k ? out2 + " of " + k : "n/a", "expected: about 5%") +
             statBox("Most extreme 10% from small hospitals", k ? pct(extSmall / ext.length) : "n/a", "small = under 60 patients"),
-          takeaway: "Every hospital here has the same true average wait, 45 minutes. Yet the most extreme days, best and worst, come mostly from small hospitals, because an average of a few patients swings more. A funnel plot judges each hospital against limits that fit its size, instead of ranking raw averages."
+          takeaway: "Every hospital here has the same true average wait, 45 minutes. Yet a few days land outside the 95% limits (red), and the most extreme days, best and worst, come mostly from small hospitals, because an average of a few patients swings more. A funnel plot judges each hospital against limits that fit its size, instead of ranking raw averages."
         };
       },
       // quality control: a control chart; turn on a machine fault and see if the limits catch it
@@ -690,14 +690,32 @@ document.querySelectorAll("img[data-inline]").forEach(async (img) => {
         : "<h4>" + sc.heading + "</h4><p>" + sc.story + "</p><p class=\"takeaway\"><strong>What the histogram tells you:</strong> " + sc.takeaway(se, n) + "</p>";
     }
     function stop() { if (timer) { clearInterval(timer); timer = null; playBtn.textContent = "Play"; playBtn.classList.remove("active"); } }
-    function reset(prefill) { stop(); means = []; samples = []; latest = null; if (prefill) for (var i = 0; i < 100; i++) drawSample(); render(); }
+    // the opening view of each setting always includes a few outliers: results that land outside the expected range by chance
+    var OUTLIERS = {
+      epi: function (P) { return samples.slice(-40).filter(function (s) { var h = tcrit(s.n - 1) * s.sd / Math.sqrt(s.n); return s.mean - h > P.mu || s.mean + h < P.mu; }).length >= 2; },
+      health: function (P) { return samples.filter(function (s) { return Math.abs(s.mean - P.mu) / (P.sigma / Math.sqrt(s.n)) > 2; }).length >= 4; },
+      quality: function (P) { var se = P.sigma / Math.sqrt(+nIn.value); return samples.slice(-50).filter(function (s) { return Math.abs(s.mean - P.mu) > 3 * se; }).length >= 1; },
+      poll: function (P) { return samples.slice(-30).filter(function (s) { return Math.abs(s.mean - P.mu) > 1.96 * Math.sqrt(s.mean * (1 - s.mean) / s.n); }).length >= 2; }
+    };
+    var SEED0 = { epi: 3610, health: 3620, quality: 3630, poll: 3640 };
+    function reset(prefill) {
+      stop(); means = []; samples = []; latest = null;
+      if (prefill) {
+        for (var seed = SEED0[cur] || 361, tries = 0; tries < 200; seed++, tries++) {
+          r = rng(seed); means = []; samples = [];
+          for (var i = 0; i < 100; i++) drawSample();
+          if (!OUTLIERS[cur] || OUTLIERS[cur](pop())) break;
+        }
+      }
+      render();
+    }
     function setScenario(key) {
       cur = key; sc = scenarios[key];
       root.querySelectorAll("#x361-scen button").forEach(function (b) {
         var on = b.getAttribute("data-s") === key; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on));
       });
-      root.querySelector("#x361-popwrap").hidden = key !== "concept";
-      root.querySelector("#x361-curvewrap").hidden = key !== "concept";
+      root.querySelector("#x361-popwrap").hidden = true;
+      root.querySelector("#x361-curvewrap").hidden = true;
       root.querySelector("#x361-faultwrap").hidden = key !== "quality";
       root.querySelector("#x361-nwrap").hidden = key === "health";
       root.querySelector("#x361-nnote").hidden = key !== "health";
@@ -728,7 +746,7 @@ document.querySelectorAll("img[data-inline]").forEach(async (img) => {
     }
     nIn.addEventListener("input", function () { reset(false); });
     curveBox.addEventListener("change", render);
-    setScenario("concept");
+    setScenario("epi");
     return { setScenario: setScenario };
   }
 
